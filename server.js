@@ -1,70 +1,102 @@
-import express from "express";
-import cors from "cors";
-import OpenAI from "openai";
-import dotenv from "dotenv";
+const express = require("express");
+const cors = require("cors");
+const dotenv = require("dotenv");
+const { TextServiceClient } = require("@google-ai/generativelanguage");
+const { GoogleAuth } = require("google-auth-library");
+
 dotenv.config();
 
 const app = express();
 app.use(cors());
 app.use(express.json());
 
-const openai = new OpenAI({
-  apiKey: process.env.OPENAI_API_KEY,
+const MODEL_NAME = "models/text-bison-001";
+const API_KEY = process.env.API_KEY;
+
+const client = new TextServiceClient({
+  authClient: new GoogleAuth().fromAPIKey(API_KEY),
 });
-
-const askAI = async (task) => {
-  const prompt = `I need a list of CLI commands for ${task} in the form of an array of strings; the response should only include the array of commands`;
-
-  const response = await openai.completions.create({
-    engine: "davinci-codex",
-    prompt: prompt,
-    max_tokens: 100,
-    n: 1, // Generate a single response
-  });
-
-  if (response && response.choices && response.choices[0]) {
-    const commands = response.choices[0].text.trim().split("\n");
-    return { commands };
-  } else {
-    throw new Error("An error occurred while generating the commands. Unexpected response from OpenAI.");
-  }
-};
 
 // Example user authentication function
 const authenticateUser = (userid, password) => {
   // Replace this with your actual authentication logic.
-  // Check if userid and password are valid, and return true for authenticated or false for authentication failure.
-  // You should have a secure authentication mechanism in your application.
-  return true; // For this example, we assume authentication is successful.
+  return true;
 };
 
+// Function to ask AI for CLI commands
+const askAI = async (task) => {
+  const promptString = `Generate a list or array of CLI commands required for the given task , the task is to ${task}. The response should be an ordered list or array, enclosed in square brackets, containing onl`;
+
+  const stopSequences = [];
+
+  try {
+    const result = await client.generateText({
+      model: MODEL_NAME,
+      temperature: 0.3,
+      candidateCount: 1,
+      top_k: 40,
+      top_p: 0.95,
+      max_output_tokens: 1024,
+      safety_settings: [
+        { category: "HARM_CATEGORY_DEROGATORY", threshold: 1 },
+        { category: "HARM_CATEGORY_TOXICITY", threshold: 1 },
+        { category: "HARM_CATEGORY_VIOLENCE", threshold: 2 },
+        { category: "HARM_CATEGORY_SEXUAL", threshold: 2 },
+        { category: "HARM_CATEGORY_MEDICAL", threshold: 2 },
+        { category: "HARM_CATEGORY_DANGEROUS", threshold: 2 },
+      ],
+      prompt: {
+        text: promptString,
+      },
+    });
+
+    const output = result[0].candidates[0].output;
+    const outputWithoutBackticks = output.replace(/```/g, "");
+    const outputArray = JSON.parse(outputWithoutBackticks); // Parse the JSON string
+    const dataArray = Object.values(outputArray);
+    return dataArray;
+  } catch (error) {
+    throw error;
+  }
+};
+
+// for testing purpose // Call the askAI function
+// askAI("Create a new folder").then((commandsArray) => {
+//   if (commandsArray) {
+//     console.log(commandsArray);
+//   } else {
+//     console.log("No valid response.");
+//   }
+// });
+
+// Endpoint to get CLI commands
 app.post("/getcommands", async (req, res) => {
   const { userid, password, task } = req.body;
 
-  // Authenticate the user before proceeding
-  const isAuthenticated = authenticateUser(userid, password);
+  // Authenticate the user
+  //   const isAuthenticated = authenticateUser(userid, password);
 
-  if (!isAuthenticated) {
-    return res.status(401).json({
-      error: {
-        message: "Authentication failed. Please provide valid credentials.",
-      },
-    });
-  }
+  //   if (!isAuthenticated) {
+  //     return res.status(401).json({
+  //       error: {
+  //         message: "Authentication failed. Please provide valid credentials.",
+  //       },
+  //     });
+  //   }
 
-  // If the user is authenticated, call askAI to get the commands.
-  try {
-    const response = await askAI(task);
-    res.json(response);
-  } catch (error) {
-    res.status(500).json({
-      error: {
-        message: error.message,
-      },
-    });
-  }
+  const data = await askAI(task);
+  console.log(typeof(data));
+  console.log("inside post");
+  console.log("and the data is ->");
+  data.forEach((element) => {
+    console.log(element);
+    console.log("\n");
+  });
+  res.json(data);
 });
 
-app.listen(3300, () => {
-  console.log("Server started at 3300");
+const port = process.env.PORT || 3300;
+
+app.listen(port, () => {
+  console.log(`Server started on port ${port}`);
 });
