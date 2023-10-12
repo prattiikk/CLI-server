@@ -23,9 +23,21 @@ const authenticateUser = (userid, password) => {
   return true;
 };
 
-// Function to ask AI for CLI commands
+// CLI commands will be generated using googles generative ai  model
 const askAI = async (task) => {
-  const promptString = `Generate a list or array of CLI commands required for the given task , the task is to ${task}. The response should be an ordered list or array, enclosed in square brackets, containing onl`;
+  const promptString = `Generate a list of CLI commands required for the given task, which is: ${task}. The response should be a list containing the commands, each enclosed in double inverted commas. For example, if the task is to install a web server with PHP and MySQL support, 
+  then response should look like this: 
+  [
+    "sudo apt-get update",
+    "sudo apt-get install apache2",
+    "sudo apt-get install mysql-server",
+    "sudo apt-get install php libapache2-mod-php",
+    "sudo systemctl enable apache2",
+    "sudo systemctl enable mysql",
+    "sudo systemctl start apache2",
+    "sudo systemctl start mysql"
+  ]
+  `;
 
   const stopSequences = [];
 
@@ -51,46 +63,37 @@ const askAI = async (task) => {
     });
 
     const output = result[0].candidates[0].output;
+    console.log(typeof output);
+    console.log(output);
+
     const outputWithoutBackticks = output.replace(/```/g, "");
-    const outputArray = JSON.parse(outputWithoutBackticks); // Parse the JSON string
+    const outputArray = JSON.parse(outputWithoutBackticks);
     const dataArray = Object.values(outputArray);
+
     return dataArray;
   } catch (error) {
     throw error;
   }
 };
 
-// for testing purpose // Call the askAI function
-// askAI("Create a new folder").then((commandsArray) => {
-//   if (commandsArray) {
-//     console.log(commandsArray);
-//   } else {
-//     console.log("No valid response.");
-//   }
-// });
-
 // Endpoint to get CLI commands
 app.post("/getcommands", async (req, res) => {
   const { userid, password, task } = req.body;
 
   // Authenticate the user
-  //   const isAuthenticated = authenticateUser(userid, password);
-
-  //   if (!isAuthenticated) {
-  //     return res.status(401).json({
-  //       error: {
-  //         message: "Authentication failed. Please provide valid credentials.",
-  //       },
-  //     });
-  //   }
+  const isAuthenticated = authenticateUser(userid, password);
+  if (!isAuthenticated) {
+    return res.status(401).json({
+      error: {
+        message: "Authentication failed. Please provide valid credentials.",
+      },
+    });
+  }
 
   const data = await askAI(task);
-  console.log(typeof(data));
   console.log("inside post");
-  console.log("and the data is ->");
   data.forEach((element) => {
     console.log(element);
-    console.log("\n");
   });
   res.json(data);
 });
